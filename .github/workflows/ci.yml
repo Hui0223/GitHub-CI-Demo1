@@ -1,0 +1,90 @@
+# =============================================================
+# CI Pipeline - 持续集成
+# =============================================================
+# 触发条件: 每次 push 或 PR 到 main 分支
+# 学习重点: 理解 Pipeline 的基本结构
+# =============================================================
+
+name: CI Pipeline
+
+# ┌─────────────────────────────────────────────────────────────
+# │ 触发条件 (Trigger)
+# │ - push: 代码推送时触发
+# │ - pull_request: 创建/更新 PR 时触发
+# └─────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Job 1: 代码质量检查 (Lint)
+  # 学习重点: 静态分析，在测试前发现代码风格问题
+  # ─────────────────────────────────────────────────────────────
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code  # 拉取代码
+        uses: actions/checkout@v4
+
+      - name: Setup Python  # 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install linter  # 安装 lint 工具
+        run: pip install ruff
+
+      - name: Run linter  # 执行代码检查
+        run: ruff check app/ tests/
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 2: 运行测试 (Test)
+  # 学习重点: 自动化测试是CI的核心
+  # ─────────────────────────────────────────────────────────────
+  test:
+    runs-on: ubuntu-latest
+    needs: lint  # 依赖: lint 通过后才运行测试
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip packages  # 缓存依赖，加速构建
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements-dev.txt') }}
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests  # 执行 pytest
+        run: pytest --tb=short -v --junitxml=junit.xml
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 3: 构建 Docker 镜像 (Build)
+  # 学习重点: 容器化构建，生成可部署的制品
+  # ─────────────────────────────────────────────────────────────
+  build:
+    runs-on: ubuntu-latest
+    needs: test  # 依赖: 测试通过后才构建
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t cicd-demo:${{ github.sha }} .
+
+      - name: Test Docker image  # 验证镜像能正常启动
+        run: |
+          docker run -d --name test-container -p 8000:8000 cicd-demo:${{ github.sha }}
+          sleep 3
+          curl -f http://localhost:8000/health || exit 1
+          docker stop test-container

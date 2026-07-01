@@ -1,0 +1,88 @@
+# =============================================================
+# CD Pipeline - 持续部署
+# =============================================================
+# 触发条件: 当 CI 在 main 分支通过后自动部署
+# 学习重点: 理解部署策略和环境管理
+# =============================================================
+
+name: CD Pipeline
+
+on:
+  workflow_run:
+    workflows: ["CI Pipeline"]  # CI 完成后触发
+    types: [completed]
+    branches: [main]
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Job 1: 推送镜像到 Registry
+  # 学习重点: 制品管理，版本标记
+  # ─────────────────────────────────────────────────────────────
+  push-image:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and tag image
+        run: |
+          IMAGE=ghcr.io/${{ github.repository }}/cicd-demo
+          docker build -t $IMAGE:latest -t $IMAGE:${{ github.sha }} .
+
+      - name: Push image
+        run: |
+          IMAGE=ghcr.io/${{ github.repository }}/cicd-demo
+          docker push $IMAGE:latest
+          docker push $IMAGE:${{ github.sha }}
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 2: 部署到 Staging 环境
+  # 学习重点: 环境隔离，先在 staging 验证
+  # ─────────────────────────────────────────────────────────────
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: push-image
+    environment: staging  # GitHub Environment (可配置审批)
+    steps:
+      - name: Deploy to staging
+        run: |
+          echo "🚀 Deploying to STAGING environment..."
+          echo "Image: ghcr.io/${{ github.repository }}/cicd-demo:${{ github.sha }}"
+          # 实际部署命令示例:
+          # kubectl set image deployment/cicd-demo app=ghcr.io/.../cicd-demo:${{ github.sha }}
+          # 或: ssh deploy@staging-server 'docker pull ... && docker-compose up -d'
+
+      - name: Smoke test staging
+        run: |
+          echo "✅ Running smoke tests on staging..."
+          # curl -f https://staging.example.com/health
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 3: 部署到 Production 环境
+  # 学习重点: 生产部署通常需要人工审批
+  # ─────────────────────────────────────────────────────────────
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    environment: production  # 需要手动审批 (在 GitHub Settings 配置)
+    steps:
+      - name: Deploy to production
+        run: |
+          echo "🚀 Deploying to PRODUCTION environment..."
+          echo "Image: ghcr.io/${{ github.repository }}/cicd-demo:${{ github.sha }}"
+
+      - name: Verify production
+        run: |
+          echo "✅ Production deployment verified!"
+          # curl -f https://app.example.com/health
