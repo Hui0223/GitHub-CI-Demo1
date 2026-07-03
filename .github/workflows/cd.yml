@@ -4,6 +4,7 @@
 # 触发条件: 当 CI 在 main 分支通过后自动部署
 # 学习重点: 理解部署策略和环境管理
 # =============================================================
+### IMAGE=ghcr.io/${{ github.repository }}/cicd-demo
 
 name: CD Pipeline
 
@@ -37,7 +38,7 @@ jobs:
 
       - name: Build and tag image
         run: |
-          IMAGE=ghcr.io/${{ github.repository }}/cicd-demo
+          IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')/cicd-demo
           docker build -t $IMAGE:latest -t $IMAGE:${{ github.sha }} .
 
       - name: Push image
