@@ -4,7 +4,6 @@
 # 触发条件: 当 CI 在 main 分支通过后自动部署
 # 学习重点: 理解部署策略和环境管理
 # =============================================================
-### IMAGE=ghcr.io/${{ github.repository }}/cicd-demo
 
 name: CD Pipeline
 
@@ -28,6 +27,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -43,7 +44,7 @@ jobs:
 
       - name: Push image
         run: |
-          IMAGE=ghcr.io/${{ github.repository }}/cicd-demo
+          IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')/cicd-demo
           docker push $IMAGE:latest
           docker push $IMAGE:${{ github.sha }}
 
@@ -59,7 +60,7 @@ jobs:
       - name: Deploy to staging
         run: |
           echo "🚀 Deploying to STAGING environment..."
-          echo "Image: ghcr.io/${{ github.repository }}/cicd-demo:${{ github.sha }}"
+          echo "Image: ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')/cicd-demo:${{ github.sha }}"
           # 实际部署命令示例:
           # kubectl set image deployment/cicd-demo app=ghcr.io/.../cicd-demo:${{ github.sha }}
           # 或: ssh deploy@staging-server 'docker pull ... && docker-compose up -d'
@@ -81,7 +82,7 @@ jobs:
       - name: Deploy to production
         run: |
           echo "🚀 Deploying to PRODUCTION environment..."
-          echo "Image: ghcr.io/${{ github.repository }}/cicd-demo:${{ github.sha }}"
+          echo "Image: ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')/cicd-demo:${{ github.sha }}"
 
       - name: Verify production
         run: |
