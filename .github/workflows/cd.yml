@@ -40,13 +40,15 @@ jobs:
       - name: Build and tag image
         run: |
           IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')/cicd-demo
-          docker build -t $IMAGE:latest -t $IMAGE:${{ github.sha }} .
+          TAG=${{ github.event.workflow_run.head_sha }}
+          docker build -t $IMAGE:latest -t $IMAGE:${TAG} .
 
       - name: Push image
         run: |
           IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')/cicd-demo
+          TAG=${{ github.event.workflow_run.head_sha }}
           docker push $IMAGE:latest
-          docker push $IMAGE:${{ github.sha }}
+          docker push $IMAGE:${TAG}
 
   # ─────────────────────────────────────────────────────────────
   # Job 2: 部署到 Staging 环境
@@ -55,20 +57,33 @@ jobs:
   deploy-staging:
     runs-on: ubuntu-latest
     needs: push-image
+    permissions:
+      packages: read
+      contents: read
     environment: staging  # GitHub Environment (可配置审批)
     steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Deploy to staging
         run: |
-          echo "🚀 Deploying to STAGING environment..."
-          echo "Image: ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')/cicd-demo:${{ github.sha }}"
-          # 实际部署命令示例:
-          # kubectl set image deployment/cicd-demo app=ghcr.io/.../cicd-demo:${{ github.sha }}
-          # 或: ssh deploy@staging-server 'docker pull ... && docker-compose up -d'
+          IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')/cicd-demo
+          TAG=${{ github.event.workflow_run.head_sha }}
+          echo "Deploying image: ${IMAGE}:${TAG}"
+          docker pull "${IMAGE}:${TAG}"
+          docker rm -f cicd-demo-staging 2>/dev/null || true
+          docker run -d --name cicd-demo-staging -p 8080:8000 "${IMAGE}:${TAG}"
 
       - name: Smoke test staging
         run: |
-          echo "✅ Running smoke tests on staging..."
-          # curl -f https://staging.example.com/health
+          sleep 3
+          curl -f http://localhost:8080/health
+          curl -f http://localhost:8080/
+          docker rm -f cicd-demo-staging
 
   # ─────────────────────────────────────────────────────────────
   # Job 3: 部署到 Production 环境
